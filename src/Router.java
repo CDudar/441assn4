@@ -1,4 +1,8 @@
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.net.Socket;
 import java.util.*;
 import cpsc441.a4.shared.*;
 
@@ -22,6 +26,22 @@ import cpsc441.a4.shared.*;
  */
 public class Router {
 	
+	
+	
+	int routerId;
+	int updateInterval;
+	String serverName;
+	int serverPort;
+	
+	Timer timer;
+	
+	
+	Socket socket;
+	ObjectOutputStream out;
+	ObjectInputStream in;
+	
+	RtnTable routingTable;
+	
     /**
      * Constructor to initialize the rouer instance 
      * 
@@ -32,6 +52,14 @@ public class Router {
      */
 	public Router(int routerId, String serverName, int serverPort, int updateInterval) {
 		// to be completed
+
+			System.out.println("Initializing Router Object");
+			this.routerId = routerId;
+			this.updateInterval = updateInterval;
+			this.serverName = serverName;
+			this.serverPort = serverPort;
+
+		
 	}
 	
 
@@ -42,8 +70,78 @@ public class Router {
      */
 	public RtnTable start() {
 		// to be completed
+		
+		
+		try {
+			System.out.println("Connecting to " + serverName);
+			System.out.println("Listening at " + serverPort);
+			
+			
+			socket = new Socket(serverName, serverPort);
+			out = new ObjectOutputStream(socket.getOutputStream());
+			in = new ObjectInputStream(socket.getInputStream());
+			
+			
+			System.out.println("Writing Hello packet to server");
+			DvrPacket hello = new DvrPacket(0, 100, 1);
+			out.writeObject(hello);
+			out.flush();
+			
+			
+			System.out.println("Reading in Hello Packet from server");
+			DvrPacket serverResponse = (DvrPacket) in.readObject();
+			
+
+			int[] minCost = serverResponse.mincost;
+			int numRouters = minCost.length;
+
+			System.out.println("Number of routers " + numRouters);
+			System.out.println("Min cost array:\n" + minCost);
+
+			
+			System.out.println("Starting timer...");
+			Timer timer = new Timer(true);
+			timer.schedule(new TimeOutHandler(this), updateInterval);	
+			
+			
+			System.out.println("Starting packet receiving loop");
+			DvrPacket receive;
+			do
+			{
+				
+				receive = (DvrPacket) in.readObject();
+				processDVR(receive);
+				
+			}while(receive.type != 2);
+			
+			
+			System.out.println("Received Quit Packet");
+			System.out.println("Closing socket, cancelling timer");
+			timer.cancel();
+			socket.close();
+			
+			
+		} catch (IOException | ClassNotFoundException e) {
+			e.printStackTrace();
+		}
+		
+		
 		return new RtnTable();
 	}
+	
+	
+	void processDVR(DvrPacket dvr) {
+		
+		
+		
+		
+	}
+	
+	void processTimeOut() {
+		
+		
+	}
+	
 
 	
 	
