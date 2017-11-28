@@ -1,6 +1,6 @@
 import java.util.TimerTask;
 
-public class TimeOutHandler extends TimerTask {
+public class TimeOutHandler implements Runnable{
 
 	
 	Router master;

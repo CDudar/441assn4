@@ -4,6 +4,11 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
 import cpsc441.a4.shared.*;
 
 /**
@@ -35,6 +40,9 @@ public class Router {
 	
 	Timer timer;
 	TimeOutHandler timeoutHandler;
+	
+	ScheduledExecutorService sExecService;
+	Future<?> future;
 	
 	Socket socket;
 	ObjectOutputStream out;
@@ -75,7 +83,6 @@ public class Router {
      */
 	public RtnTable start() {
 		// to be completed
-		System.out.println("NEWERRRR=====================");
 		
 		try {
 			System.out.println("Connecting to " + serverName);
@@ -148,9 +155,13 @@ public class Router {
 			*/
 			
 			System.out.println("Starting timer...");
-			Timer timer = new Timer(true);
-			timeoutHandler = new TimeOutHandler(this);
-			timer.schedule(timeoutHandler, updateInterval, updateInterval);	
+			
+			sExecService = Executors.newScheduledThreadPool(1);
+			future = sExecService.scheduleAtFixedRate(new TimeOutHandler(this), (long)updateInterval, (long)updateInterval, TimeUnit.MILLISECONDS);
+			
+			//Timer timer = new Timer(true);
+			//timeoutHandler = new TimeOutHandler(this);
+			//timer.schedule(timeoutHandler, updateInterval, updateInterval);	
 			
 			
 			System.out.println("Starting packet receiving loop");
@@ -166,13 +177,15 @@ public class Router {
 			
 			System.out.println("Received Quit Packet");
 			System.out.println("Closing socket, cancelling timer");
-			timer.cancel();
+			sExecService.shutdown();
 			socket.close();
 			
 			
 		} catch (IOException | ClassNotFoundException e) {
 			e.printStackTrace();
 		}
+		
+		
 		
 		
 		return new RtnTable(minCost[routerId], nextHop);
@@ -190,13 +203,13 @@ public class Router {
 		if(senderId == DvrPacket.SERVER) {
 			System.out.println("New routing table formation");
 			
-			linkCost = new int[routerId];
+			linkCost = new int[numRouters];
 			linkCost = dvr.mincost;
 			
-			minCost = new int[routerId][routerId];
-			minCost[routerId] = dvr.mincost;
+			minCost = new int[numRouters][numRouters];
+			minCost[routerId] = linkCost.clone();
 			
-			nextHop = new int[routerId];
+			nextHop = new int[numRouters];
 			
 			//initializing next hop routers (will only be neighbors at this point)
 			for(int i = 0 ; i < numRouters; i++) {
@@ -224,8 +237,6 @@ public class Router {
 					continue;
 				}
 				
-			//	System.out.println("Before comparisons...Current linkCost vector ");
-			//	printArray(linkCost);
 
 				if(minCost[routerId][i] > linkCost[senderId] + minCost[senderId][i]) {
 					minCost[routerId][i] = linkCost[senderId] + minCost[senderId][i];
@@ -238,28 +249,27 @@ public class Router {
 			if(localMinCostChanged) {
 				
 				for(int i = 0; i < numRouters; i++) {
-				
-				//	System.out.println("After comparisons, before send...Current linkCost vector ");
-				//	printArray(linkCost);
 					
 					//dpnt send dvrpackets to self or non-neighbors
 					if(i == routerId || linkCost[i] == DvrPacket.INFINITY){
-						System.out.println("This is router " + routerId + "skipping send to non-neighbor " + i);
+						System.out.println("This is router " + routerId + " skipping send to non-neighbor " + i);
 						continue;
 					}
+					
 					//send to neighbors only
 					DvrPacket sendPacket = new DvrPacket(routerId, i, DvrPacket.ROUTE, minCost[routerId]);
 					try {
 						out.writeObject(sendPacket);
 						out.flush();
 					} catch (IOException e) {
-						// TODO Auto-generated catch block
 						e.printStackTrace();
 					}
 
 			
 				}
-
+				System.out.println("Resetting timer due to change of local minCost vector");
+				future.cancel(true);
+				future = sExecService.scheduleAtFixedRate(new TimeOutHandler(this), (long)updateInterval, (long)updateInterval, TimeUnit.MILLISECONDS);
 			}
 		
 		}
@@ -289,9 +299,6 @@ public class Router {
 
 	
 		}
-		
-		//timeoutHandler = new TimeOutHandler(this);
-		//timer.schedule(timeoutHandler, updateInterval);	
 			
 	}
 	
