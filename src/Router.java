@@ -34,11 +34,16 @@ public class Router {
 	int serverPort;
 	
 	Timer timer;
-	
+	TimeOutHandler timeoutHandler;
 	
 	Socket socket;
 	ObjectOutputStream out;
 	ObjectInputStream in;
+	
+	int[] linkCost;
+	int[][] minCost;
+	int[] nextHop;
+	int numRouters;
 	
 	RtnTable routingTable;
 	
@@ -70,7 +75,7 @@ public class Router {
      */
 	public RtnTable start() {
 		// to be completed
-		
+		System.out.println("NEWERRRR=====================");
 		
 		try {
 			System.out.println("Connecting to " + serverName);
@@ -83,7 +88,7 @@ public class Router {
 			
 			
 			System.out.println("Writing Hello packet to server");
-			DvrPacket hello = new DvrPacket(0, 100, 1);
+			DvrPacket hello = new DvrPacket(routerId, DvrPacket.SERVER, DvrPacket.HELLO);
 			out.writeObject(hello);
 			out.flush();
 			
@@ -91,28 +96,72 @@ public class Router {
 			System.out.println("Reading in Hello Packet from server");
 			DvrPacket serverResponse = (DvrPacket) in.readObject();
 			
+			numRouters = serverResponse.mincost.length;
+			
+			linkCost = new int[numRouters];
+			linkCost = serverResponse.mincost;
+			
+			System.out.println("Link Cost");
+			printArray(linkCost);
+			
+			minCost = new int[numRouters][numRouters];
+			minCost[routerId] = linkCost.clone();
+			
+			
+			System.out.println("Min cost received");
+			printArray(minCost[routerId]);
+			
+			nextHop = new int[numRouters];
+			
 
-			int[] minCost = serverResponse.mincost;
-			int numRouters = minCost.length;
+			
+			//initializing next hop routers (will only be neighbors at this point)
+			for(int i = 0 ; i < numRouters; i++) {
+				if(minCost[routerId][i] != 999) {
+					nextHop[i] = i;
+				}
+				else {
+					nextHop[i] = -1;
+				}
+				
+			}
+			
+			System.out.println("Next hop");
+			printArray(nextHop);
 
 			System.out.println("Number of routers " + numRouters);
 			System.out.println("Min cost array:\n" + minCost);
-
+			
+			for(int i = 0 ; i < numRouters; i++) {
+				System.out.println(minCost[i]);
+			}
+			/**
+			System.out.println("Experiment");
+			minCost[routerId][0] = 1;
+			minCost[routerId][1] = 1;
+			minCost[routerId][2] = 1;
+			minCost[routerId][3] = 1;
+			System.out.println("mincost after changes");
+			printArray(minCost[routerId]);
+			System.out.println("Link cost after changes");
+			printArray(linkCost);
+			*/
 			
 			System.out.println("Starting timer...");
 			Timer timer = new Timer(true);
-			timer.schedule(new TimeOutHandler(this), updateInterval);	
+			timeoutHandler = new TimeOutHandler(this);
+			timer.schedule(timeoutHandler, updateInterval, updateInterval);	
 			
 			
 			System.out.println("Starting packet receiving loop");
 			DvrPacket receive;
 			do
 			{
-				
+				System.out.println("Received packet");
 				receive = (DvrPacket) in.readObject();
 				processDVR(receive);
 				
-			}while(receive.type != 2);
+			}while(receive.type != DvrPacket.QUIT);
 			
 			
 			System.out.println("Received Quit Packet");
@@ -126,22 +175,134 @@ public class Router {
 		}
 		
 		
-		return new RtnTable();
+		return new RtnTable(minCost[routerId], nextHop);
 	}
 	
 	
-	void processDVR(DvrPacket dvr) {
+	synchronized void processDVR(DvrPacket dvr) {
+		
+		if(dvr.type == DvrPacket.QUIT)
+			return;
 		
 		
+		int senderId = dvr.sourceid;
+		
+		if(senderId == DvrPacket.SERVER) {
+			System.out.println("New routing table formation");
+			
+			linkCost = new int[routerId];
+			linkCost = dvr.mincost;
+			
+			minCost = new int[routerId][routerId];
+			minCost[routerId] = dvr.mincost;
+			
+			nextHop = new int[routerId];
+			
+			//initializing next hop routers (will only be neighbors at this point)
+			for(int i = 0 ; i < numRouters; i++) {
+				if(minCost[routerId][i] != 999) {
+					nextHop[i] = i;
+				}
+				else {
+					nextHop[i] = -1;
+				}
+				
+			}
+			
+		}
+		else {
+			
+			System.out.println("Received new mincost vector from " + senderId);
+			minCost[senderId] = dvr.mincost;
+			
+			boolean localMinCostChanged = false;
+			
+			for(int i = 0; i < numRouters; i++) {
+				
+				//Check if i is self 
+				if(i == routerId) {
+					continue;
+				}
+				
+			//	System.out.println("Before comparisons...Current linkCost vector ");
+			//	printArray(linkCost);
+
+				if(minCost[routerId][i] > linkCost[senderId] + minCost[senderId][i]) {
+					minCost[routerId][i] = linkCost[senderId] + minCost[senderId][i];
+					nextHop[i] = senderId;
+					localMinCostChanged = true;
+				}
+					
+			}
+			
+			if(localMinCostChanged) {
+				
+				for(int i = 0; i < numRouters; i++) {
+				
+				//	System.out.println("After comparisons, before send...Current linkCost vector ");
+				//	printArray(linkCost);
+					
+					//dpnt send dvrpackets to self or non-neighbors
+					if(i == routerId || linkCost[i] == DvrPacket.INFINITY){
+						System.out.println("This is router " + routerId + "skipping send to non-neighbor " + i);
+						continue;
+					}
+					//send to neighbors only
+					DvrPacket sendPacket = new DvrPacket(routerId, i, DvrPacket.ROUTE, minCost[routerId]);
+					try {
+						out.writeObject(sendPacket);
+						out.flush();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+
+			
+				}
+
+			}
+		
+		}
+	}
+	
+	synchronized void processTimeOut() {
+		System.out.println("Processing Timeout exp");
+		
+		for(int i = 0; i < numRouters; i++) {
+			
+			//dpnt send dvrpackets to self or non-neighbors
+			if(i == routerId || linkCost[i] == DvrPacket.INFINITY)
+				continue;
+			
+			
+			System.out.println("Sending to " + i + " whose link cost is " + linkCost[i]);
+			
+			//send to neighbors only
+			DvrPacket sendPacket = new DvrPacket(routerId, i, DvrPacket.ROUTE, minCost[routerId]);
+			try {
+				out.writeObject(sendPacket);
+				out.flush();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+
+	
+		}
+		
+		//timeoutHandler = new TimeOutHandler(this);
+		//timer.schedule(timeoutHandler, updateInterval);	
+			
+	}
+	
+
+	void printArray(int[] array){
+		for (int i = 0; i < array.length; i++) {
+			System.out.println("Index " + i + " holds " + array[i]);
+		}
 		
 		
 	}
-	
-	void processTimeOut() {
-		
-		
-	}
-	
 
 	
 	
@@ -165,7 +326,10 @@ public class Router {
 			System.out.println("incorrect usage, try again.");
 			System.exit(0);
 		}
-			
+		
+		System.out.println("Classpath");
+		System.getProperty("java.classpath");
+		
 		// print the parameters
 		System.out.printf("starting Router #%d with parameters:\n", routerId);
 		System.out.printf("Relay server host name: %s\n", serverName);
@@ -183,5 +347,7 @@ public class Router {
 		System.out.println("Routing Table at Router #" + routerId);
 		System.out.print(rtn.toString());
 	}
+
+
 
 }

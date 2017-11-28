@@ -12,7 +12,7 @@ public class TimeOutHandler extends TimerTask {
 	
 	
 	public void run(){
-		master.processTimeout();
+		master.processTimeOut();
 		
 	}
 	
