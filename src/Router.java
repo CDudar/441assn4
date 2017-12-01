@@ -85,6 +85,8 @@ public class Router {
 		// to be completed
 		
 		try {
+			System.out.println("NEW VERSION NEW VERSION=================");
+			
 			System.out.println("Connecting to " + serverName);
 			System.out.println("Listening at " + serverPort);
 			
@@ -105,33 +107,8 @@ public class Router {
 			
 			numRouters = serverResponse.mincost.length;
 			
-			linkCost = new int[numRouters];
-			linkCost = serverResponse.mincost;
-			
-			System.out.println("Link Cost");
-			printArray(linkCost);
-			
-			minCost = new int[numRouters][numRouters];
-			minCost[routerId] = linkCost.clone();
-			
-			
-			System.out.println("Min cost received");
-			printArray(minCost[routerId]);
-			
-			nextHop = new int[numRouters];
-			
 
-			
-			//initializing next hop routers (will only be neighbors at this point)
-			for(int i = 0 ; i < numRouters; i++) {
-				if(minCost[routerId][i] != 999) {
-					nextHop[i] = i;
-				}
-				else {
-					nextHop[i] = -1;
-				}
-				
-			}
+			initializeVectors(serverResponse);
 			
 			System.out.println("Next hop");
 			printArray(nextHop);
@@ -142,26 +119,11 @@ public class Router {
 			for(int i = 0 ; i < numRouters; i++) {
 				System.out.println(minCost[i]);
 			}
-			/**
-			System.out.println("Experiment");
-			minCost[routerId][0] = 1;
-			minCost[routerId][1] = 1;
-			minCost[routerId][2] = 1;
-			minCost[routerId][3] = 1;
-			System.out.println("mincost after changes");
-			printArray(minCost[routerId]);
-			System.out.println("Link cost after changes");
-			printArray(linkCost);
-			*/
 			
 			System.out.println("Starting timer...");
 			
 			sExecService = Executors.newScheduledThreadPool(1);
 			future = sExecService.scheduleAtFixedRate(new TimeOutHandler(this), (long)updateInterval, (long)updateInterval, TimeUnit.MILLISECONDS);
-			
-			//Timer timer = new Timer(true);
-			//timeoutHandler = new TimeOutHandler(this);
-			//timer.schedule(timeoutHandler, updateInterval, updateInterval);	
 			
 			
 			System.out.println("Starting packet receiving loop");
@@ -201,26 +163,7 @@ public class Router {
 		int senderId = dvr.sourceid;
 		
 		if(senderId == DvrPacket.SERVER) {
-			System.out.println("New routing table formation");
-			
-			linkCost = new int[numRouters];
-			linkCost = dvr.mincost;
-			
-			minCost = new int[numRouters][numRouters];
-			minCost[routerId] = linkCost.clone();
-			
-			nextHop = new int[numRouters];
-			
-			//initializing next hop routers (will only be neighbors at this point)
-			for(int i = 0 ; i < numRouters; i++) {
-				if(minCost[routerId][i] != 999) {
-					nextHop[i] = i;
-				}
-				else {
-					nextHop[i] = -1;
-				}
-				
-			}
+			initializeVectors(dvr);
 			
 		}
 		else {
@@ -301,6 +244,40 @@ public class Router {
 		}
 			
 	}
+	
+	
+	synchronized void initializeVectors(DvrPacket dvr) {
+		System.out.println("New topology");
+		
+		linkCost = new int[numRouters];
+		linkCost = dvr.mincost;
+		
+		System.out.println("Link Cost");
+		printArray(linkCost);
+		
+		minCost = new int[numRouters][numRouters];
+		minCost[routerId] = linkCost.clone();
+		
+		
+		System.out.println("Min cost received");
+		printArray(minCost[routerId]);
+		
+		nextHop = new int[numRouters];
+		
+		//initializing next hop routers (will only be neighbors at this point)
+		for(int i = 0 ; i < numRouters; i++) {
+			if(minCost[routerId][i] != 999) {
+				nextHop[i] = i;
+			}
+			else {
+				nextHop[i] = -1;
+			}
+			
+		}
+	}
+	
+	
+	
 	
 
 	void printArray(int[] array){
